@@ -225,7 +225,6 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
                   Chỉ tiêu Tháng {month}
                 </label>
                 <SafeInput 
-                  required
                   value={targetMonth}
                   onValueChange={handlePriceValueChange(setTargetMonth)}
                   placeholder="Số lượng/Tỷ lệ"
