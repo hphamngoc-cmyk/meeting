@@ -37,7 +37,20 @@ export async function exportToPPTX(departments: Department[], month: number, yea
   const riskSnap = await getDocs(query(collection(db, 'risks'), where('year', '==', year), where('quarter', '==', quarter)));
 
   const allObjectives = objSnap.docs.map(d => ({ id: d.id, ...d.data() } as Objective));
+  allObjectives.sort((a, b) => {
+    const timeA = a.createdAt || 0;
+    const timeB = b.createdAt || 0;
+    if (timeA !== timeB) return timeA - timeB;
+    return a.id.localeCompare(b.id);
+  });
+
   const allOkrs = okrSnap.docs.map(d => ({ id: d.id, ...d.data() } as OKR));
+  allOkrs.sort((a, b) => {
+    const timeA = a.createdAt || 0;
+    const timeB = b.createdAt || 0;
+    if (timeA !== timeB) return timeA - timeB;
+    return a.id.localeCompare(b.id);
+  });
   const allReports = reportSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
   const allRisks = riskSnap.docs.map(d => ({ id: d.id, ...d.data() } as Risk));
 
@@ -183,8 +196,8 @@ export async function exportToPPTX(departments: Department[], month: number, yea
               if (reportMode === 'monthly') {
                 resultRows.push([
                   { text: `O${oIdx + 1}. ${obj.content}\nKR${kIdx + 1}. ${okr.kr}`, options: { fontSize: 8, border: { type: "solid", color: "CBD5E1" } } },
-                  { text: formatValue(okr.targetQuarter), options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
-                  { text: formatValue(okr.targetMonth), options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
+                  { text: formatValue(report?.targetQuarter ?? okr.targetQuarter), options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
+                  { text: formatValue(report?.targetMonth ?? okr.targetMonth), options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
                   { text: formatValue(report?.actual) || "-", options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
                   { text: statusText, options: { fontSize: 9, align: "center", color: statusColor, bold: true, border: { type: "solid", color: "CBD5E1" } } },
                   { text: report?.notes || "", options: { fontSize: 8, border: { type: "solid", color: "CBD5E1" } } }
@@ -193,7 +206,7 @@ export async function exportToPPTX(departments: Department[], month: number, yea
                 resultRows.push([
                   { text: `O${oIdx + 1}. ${obj.content}\nKR${kIdx + 1}. ${okr.kr}`, options: { fontSize: 8, border: { type: "solid", color: "CBD5E1" } } },
                   { text: formatValue(okr.targetYear), options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
-                  { text: formatValue(okr.targetQuarter), options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
+                  { text: formatValue(report?.targetQuarter ?? okr.targetQuarter), options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
                   { text: formatValue(report?.actual) || "-", options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
                   { text: statusText, options: { fontSize: 9, align: "center", color: statusColor, bold: true, border: { type: "solid", color: "CBD5E1" } } },
                   { text: report?.notes || "", options: { fontSize: 8, border: { type: "solid", color: "CBD5E1" } } }
@@ -272,7 +285,11 @@ export async function exportToPPTX(departments: Department[], month: number, yea
             ]);
           } else {
             objKrs.forEach((okr, kIdx) => {
-              const currentPeriodTarget = reportMode === 'monthly' ? okr.targetQuarter : okr.targetYear;
+              const report = allReports.find(r => r.krId === okr.id && r.deptId === dept.id);
+              const isLastMonthOfQuarter = reportMode === 'monthly' && month % 3 === 0;
+              const currentPeriodTarget = reportMode === 'monthly' 
+                ? (isLastMonthOfQuarter ? (okr.targetNextQuarter ?? '') : (report?.targetQuarter ?? okr.targetQuarter)) 
+                : okr.targetYear;
               const nextPeriodTarget = reportMode === 'monthly' ? okr.targetNextMonth : okr.targetNextQuarter;
               const nextPeriodNotes = reportMode === 'monthly' ? okr.notesNextMonth : okr.notesNextQuarter;
 

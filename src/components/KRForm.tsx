@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { addDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { addDoc, collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { X, Send, ListPlus } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { BSCPerspective, PERSPECTIVE_LABELS, Objective } from '../types';
@@ -50,7 +50,15 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
     
     setLoading(true);
     try {
-      await addDoc(collection(db, 'okrs'), {
+      // Find current KRs under this objective to determine the next sequential order number
+      const q = query(
+        collection(db, 'okrs'),
+        where('objectiveId', '==', selectedObjectiveId)
+      );
+      const snap = await getDocs(q);
+      const existingCount = snap.docs.length;
+
+      const krDocRef = await addDoc(collection(db, 'okrs'), {
         deptId,
         quarter,
         year,
@@ -61,8 +69,42 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
         targetYear: parseValue(targetYear),
         targetQuarter: parseValue(targetQuarter),
         targetMonth: parseValue(targetMonth),
-        unit
+        unit,
+        order: existingCount,
+        createdAt: Date.now()
       });
+
+      const krId = krDocRef.id;
+
+      // Always populate the current month's report target if in monthly mode
+      if (mode === 'monthly') {
+        const mReportId = `${deptId}_${krId}_m${month}_${year}`;
+        await setDoc(doc(db, 'reports', mReportId), {
+          deptId,
+          krId,
+          month,
+          year,
+          targetMonth: parseValue(targetMonth),
+          targetQuarter: parseValue(targetQuarter),
+          actual: '',
+          status: '',
+          notes: ''
+        }, { merge: true });
+      }
+
+      // Always populate the current quarter's report target
+      const qReportId = `${deptId}_${krId}_q${quarter}_${year}`;
+      await setDoc(doc(db, 'q_reports', qReportId), {
+        deptId,
+        krId,
+        quarter,
+        year,
+        targetQuarter: parseValue(targetQuarter),
+        actual: '',
+        status: '',
+        notes: ''
+      }, { merge: true });
+
       onClose();
     } catch (err) {
       console.error(err);

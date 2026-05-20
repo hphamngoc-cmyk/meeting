@@ -31,6 +31,7 @@ export default function ObjectiveForm({ deptId, quarter, year, mode, onClose }: 
         mode, // Store the mode so we know if it's a Yearly or Quarterly objective
         perspective,
         content: content.trim(),
+        createdAt: Date.now()
       });
       onClose();
     } catch (err) {

@@ -22,7 +22,8 @@ import {
   Target,
   ListPlus,
   X,
-  AlertTriangle
+  AlertTriangle,
+  GripVertical
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { OKR, Objective, MonthlyReport, QuarterlyReport, BSCPerspective, PERSPECTIVE_LABELS } from '../types';
@@ -60,6 +61,10 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
   const [deletingKR, setDeletingKR] = useState<OKR | null>(null);
   const [editingNotesReport, setEditingNotesReport] = useState<{ krId: string; krText: string; notes: string } | null>(null);
 
+  // Drag and drop states for key results
+  const [draggedKrId, setDraggedKrId] = useState<string | null>(null);
+  const [dragOverKrId, setDragOverKrId] = useState<string | null>(null);
+
   // Inputs for edit modals
   const [editObjContent, setEditObjContent] = useState('');
   const [editKRContent, setEditKRContent] = useState('');
@@ -78,7 +83,14 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
       where('quarter', '==', quarter)
     );
     return onSnapshot(qObj, (snapshot) => {
-      setObjectives(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Objective)));
+      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Objective));
+      docs.sort((a, b) => {
+        const timeA = a.createdAt || 0;
+        const timeB = b.createdAt || 0;
+        if (timeA !== timeB) return timeA - timeB;
+        return a.id.localeCompare(b.id);
+      });
+      setObjectives(docs);
     });
   }, [deptId, quarter, year]);
 
@@ -90,7 +102,19 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
       where('quarter', '==', quarter)
     );
     return onSnapshot(qOkr, (snapshot) => {
-      setOkrs(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as OKR)));
+      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as OKR));
+      docs.sort((a, b) => {
+        const orderA = a.order !== undefined ? a.order : 999999;
+        const orderB = b.order !== undefined ? b.order : 999999;
+        if (orderA !== orderB) return orderA - orderB;
+
+        const timeA = a.createdAt || 0;
+        const timeB = b.createdAt || 0;
+        if (timeA !== timeB) return timeA - timeB;
+
+        return a.id.localeCompare(b.id);
+      });
+      setOkrs(docs);
     });
   }, [deptId, quarter, year]);
 
@@ -186,7 +210,7 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
         body: JSON.stringify({
           notes: currentNotes,
           kr: okr.kr,
-          targetMonth: mode === 'monthly' ? okr.targetMonth : okr.targetQuarter,
+          targetMonth: mode === 'monthly' ? (report?.targetMonth ?? okr.targetMonth) : (report?.targetQuarter ?? okr.targetQuarter),
           actual: currentActual
         })
       });
@@ -241,6 +265,63 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
     }
   };
 
+  const handleKrDrop = async (targetOkr: OKR) => {
+    if (!draggedKrId || draggedKrId === targetOkr.id) return;
+
+    // Find the dragged OKR object
+    const draggedOkr = okrs.find(o => o.id === draggedKrId);
+    if (!draggedOkr) return;
+
+    // Ensure they belong to the same objective
+    if (draggedOkr.objectiveId !== targetOkr.objectiveId) return;
+
+    // Get all KRs of this objective
+    const objKrs = okrs.filter(o => o.objectiveId === targetOkr.objectiveId);
+    const draggedIdx = objKrs.findIndex(o => o.id === draggedKrId);
+    const targetIdx = objKrs.findIndex(o => o.id === targetOkr.id);
+
+    if (draggedIdx === -1 || targetIdx === -1) return;
+
+    // Reorder the array
+    const reordered = [...objKrs];
+    const [removed] = reordered.splice(draggedIdx, 1);
+    reordered.splice(targetIdx, 0, removed);
+
+    // Optimistically update local state so UI is dynamic and fast
+    const otherKrs = okrs.filter(o => o.objectiveId !== targetOkr.objectiveId);
+    const updatedOkrs = [...otherKrs];
+    reordered.forEach((okr, index) => {
+      updatedOkrs.push({
+        ...okr,
+        order: index
+      });
+    });
+
+    updatedOkrs.sort((a, b) => {
+      const orderA = a.order !== undefined ? a.order : 999999;
+      const orderB = b.order !== undefined ? b.order : 999999;
+      if (orderA !== orderB) return orderA - orderB;
+
+      const timeA = a.createdAt || 0;
+      const timeB = b.createdAt || 0;
+      if (timeA !== timeB) return timeA - timeB;
+
+      return a.id.localeCompare(b.id);
+    });
+
+    setOkrs(updatedOkrs);
+
+    // Persist to Firebase
+    try {
+      const promises = reordered.map((okr, index) => 
+        setDoc(doc(db, 'okrs', okr.id), { order: index }, { merge: true })
+      );
+      await Promise.all(promises);
+    } catch (err) {
+      console.error("Error updating KR order in Firestore:", err);
+    }
+  };
+
   const handleDeleteKRClick = (okr: OKR) => {
     setDeletingKR(okr);
   };
@@ -260,8 +341,9 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
     setEditingKR(okr);
     setEditKRContent(okr.kr);
     setEditKRTargetYear(formatValue(okr.targetYear || ''));
-    setEditKRTargetQuarter(formatValue(okr.targetQuarter || ''));
-    setEditKRTargetMonth(formatValue(okr.targetMonth || ''));
+    const rep = mode === 'monthly' ? reports[okr.id] : qReports[okr.id];
+    setEditKRTargetQuarter(formatValue(rep?.targetQuarter ?? okr.targetQuarter ?? ''));
+    setEditKRTargetMonth(formatValue(rep?.targetMonth ?? okr.targetMonth ?? ''));
     setEditKRUnit(okr.unit || '');
   };
 
@@ -276,6 +358,13 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
         targetMonth: parseValue(editKRTargetMonth),
         unit: editKRUnit.trim()
       }, { merge: true });
+
+      if (mode === 'monthly') {
+        await handleUpdateReport(editingKR.id, 'targetMonth', editKRTargetMonth);
+        await handleUpdateReport(editingKR.id, 'targetQuarter', editKRTargetQuarter);
+      } else {
+        await handleUpdateReport(editingKR.id, 'targetQuarter', editKRTargetQuarter);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -291,12 +380,18 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
       if (form === 'performance') {
         return ['Kết quả then chốt', 'Đơn vị tính', 'Mục tiêu Quý ' + quarter, 'Mục tiêu tháng ' + month, 'Thực hiện tháng ' + month, 'Đánh giá', 'Ghi chú'];
       } else {
+        const isLastMonthOfQuarter = month % 3 === 0;
         const histCols = [];
-        const startMonthOfQuarter = (quarter - 1) * 3 + 1;
-        for (let m = startMonthOfQuarter; m <= month; m++) {
-          histCols.push('Kết quả T' + m);
+        if (!isLastMonthOfQuarter) {
+          const startMonthOfQuarter = (quarter - 1) * 3 + 1;
+          for (let m = startMonthOfQuarter; m <= month; m++) {
+            histCols.push('Kết quả T' + m);
+          }
         }
-        return ['Kết quả then chốt', 'Đơn vị tính', 'Mục tiêu Quý ' + quarter, ...histCols, 'Mục tiêu tháng ' + (month + 1 > 12 ? 1 : month + 1), 'Ghi chú'];
+        const displayQuarter = isLastMonthOfQuarter 
+          ? (quarter === 4 ? 1 : quarter + 1) 
+          : quarter;
+        return ['Kết quả then chốt', 'Đơn vị tính', 'Mục tiêu Quý ' + displayQuarter, ...histCols, 'Mục tiêu tháng ' + (month + 1 > 12 ? 1 : month + 1), 'Ghi chú'];
       }
     } else {
       if (form === 'performance') {
@@ -419,15 +514,58 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                           const report = mode === 'monthly' ? reports[okr.id] : qReports[okr.id];
                           const hist = historyReports[okr.id] || [];
                           const histColsCount = form === 'performance' ? 0 : (headers.length - 5);
+                          const isDragging = draggedKrId === okr.id;
+                          const isDragOver = dragOverKrId === okr.id;
                           
                            return (
-                            <tr key={okr.id} className="border-b border-slate-100 hover:bg-slate-50/30 transition-colors group">
+                            <tr 
+                              key={okr.id} 
+                              draggable
+                              onDragStart={(e) => {
+                                setDraggedKrId(okr.id);
+                                e.dataTransfer.effectAllowed = 'move';
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                if (draggedKrId) {
+                                  const draggedOkr = okrs.find(o => o.id === draggedKrId);
+                                  if (draggedOkr && draggedOkr.objectiveId === okr.objectiveId) {
+                                    if (dragOverKrId !== okr.id) {
+                                      setDragOverKrId(okr.id);
+                                    }
+                                  }
+                                }
+                              }}
+                              onDragLeave={() => {
+                                if (dragOverKrId === okr.id) {
+                                  setDragOverKrId(null);
+                                }
+                              }}
+                              onDrop={async (e) => {
+                                e.preventDefault();
+                                await handleKrDrop(okr);
+                                setDraggedKrId(null);
+                                setDragOverKrId(null);
+                              }}
+                              onDragEnd={() => {
+                                setDraggedKrId(null);
+                                setDragOverKrId(null);
+                              }}
+                              className={cn(
+                                "border-b border-slate-100 transition-all duration-150 group",
+                                isDragging ? "opacity-30 bg-indigo-50/50" : "hover:bg-slate-50/30",
+                                isDragOver && !isDragging ? "bg-indigo-100/70 border-y border-indigo-500 scale-[0.99] shadow-inner" : ""
+                              )}
+                            >
                               {/* Column 1: KR content */}
                               <td className={cn("py-1 px-2 border-r border-slate-200 bg-white", getColClass(0, headers.length))}>
                                 <div className="flex items-center justify-start flex-wrap gap-x-2 gap-y-0.5">
-                                  <span className="text-slate-600 text-[11px] font-bold pl-1 leading-relaxed">
-                                    KR{kIdx + 1}. {okr.kr}
-                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-amber-500 cursor-grab shrink-0" />
+                                    <span className="text-slate-600 text-[11px] font-bold leading-relaxed">
+                                      KR{kIdx + 1}. {okr.kr}
+                                    </span>
+                                  </div>
                                   <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                                     <button 
                                       onClick={() => handleEditKRClick(okr)}
@@ -453,12 +591,40 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                               </td>
                               
                               {/* Column 3: targetYear / targetQuarter */}
-                              <td className={cn("py-1 px-1.5 text-center border-r border-slate-200 bg-white font-mono text-xs font-bold text-slate-700", getColClass(2, headers.length))}>
-                                <div className="flex items-center justify-center gap-1 inline-flex flex-wrap">
-                                  <span>
-                                    {formatValue(mode === 'monthly' ? okr.targetQuarter : okr.targetYear)}
-                                  </span>
-                                </div>
+                              <td className={cn("py-0.5 px-1 text-center border-r border-slate-200 bg-white font-mono", getColClass(2, headers.length))}>
+                                {(() => {
+                                  const isShiftedQuarter = mode === 'monthly' && month % 3 === 0 && form === 'next_period';
+                                  const rawVal = isShiftedQuarter
+                                    ? (okr.targetNextQuarter ?? '')
+                                    : (mode === 'monthly' 
+                                        ? (report?.targetQuarter ?? okr.targetQuarter ?? '') 
+                                        : (okr.targetYear ?? ''));
+                                  const inputValue = formatValue(rawVal);
+                                  const inputWidth = Math.max(45, Math.min(100, inputValue.length * 7.5 + 15));
+                                  return (
+                                    <div className="flex items-center justify-center gap-1 inline-flex flex-wrap">
+                                      <SafeInput 
+                                        type="text"
+                                        value={inputValue}
+                                        onValueChange={(val) => {
+                                          const clean = parseValue(val);
+                                          if (clean === '' || !isNaN(Number(clean))) {
+                                            if (isShiftedQuarter) {
+                                              setDoc(doc(db, 'okrs', okr.id), { targetNextQuarter: clean }, { merge: true });
+                                            } else if (mode === 'monthly') {
+                                              handleUpdateReport(okr.id, 'targetQuarter', clean);
+                                            } else {
+                                              setDoc(doc(db, 'okrs', okr.id), { targetYear: clean }, { merge: true });
+                                            }
+                                          }
+                                        }}
+                                        placeholder="..."
+                                        style={{ width: `${inputWidth}px` }}
+                                        className="font-mono text-xs font-bold py-0.5 px-1 rounded-md border border-slate-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none bg-slate-50/50 transition-all text-center text-slate-700 hover:border-slate-300"
+                                      />
+                                    </div>
+                                  );
+                                })()}
                               </td>
    
                               {/* Non-Performance (Next period target columns or history columns) */}
@@ -475,12 +641,35 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
    
                               {/* Column 4: targetMonth or targetQuarter */}
                               {form === 'performance' && (
-                                <td className={cn("py-1 px-1.5 text-center border-r border-slate-200 bg-white font-mono text-xs font-bold text-slate-700", getColClass(3, headers.length))}>
-                                  <div className="flex items-center justify-center gap-1 inline-flex flex-wrap">
-                                    <span>
-                                      {formatValue(mode === 'monthly' ? okr.targetMonth : okr.targetQuarter)}
-                                    </span>
-                                  </div>
+                                <td className={cn("py-0.5 px-1 text-center border-r border-slate-200 bg-white font-mono", getColClass(3, headers.length))}>
+                                  {(() => {
+                                    const rawVal = mode === 'monthly'
+                                      ? (report?.targetMonth ?? '')
+                                      : (report?.targetQuarter ?? '');
+                                    const inputValue = formatValue(rawVal);
+                                    const inputWidth = Math.max(45, Math.min(100, inputValue.length * 7.5 + 15));
+                                    return (
+                                      <div className="flex items-center justify-center gap-1 inline-flex flex-wrap">
+                                        <SafeInput 
+                                          type="text"
+                                          value={inputValue}
+                                          onValueChange={(val) => {
+                                            const clean = parseValue(val);
+                                            if (clean === '' || !isNaN(Number(clean))) {
+                                              if (mode === 'monthly') {
+                                                handleUpdateReport(okr.id, 'targetMonth', clean);
+                                              } else {
+                                                handleUpdateReport(okr.id, 'targetQuarter', clean);
+                                              }
+                                            }
+                                          }}
+                                          placeholder="..."
+                                          style={{ width: `${inputWidth}px` }}
+                                          className="font-mono text-xs font-black py-0.5 px-1 rounded-md border border-slate-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none bg-slate-50/50 transition-all text-center text-indigo-700 hover:border-slate-300"
+                                        />
+                                      </div>
+                                    );
+                                  })()}
                                 </td>
                               )}
    

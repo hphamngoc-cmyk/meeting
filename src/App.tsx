@@ -28,7 +28,8 @@ import {
   Check,
   Edit3,
   Trash2,
-  Calendar
+  Calendar,
+  GripVertical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from './lib/firebase';
@@ -72,6 +73,29 @@ export default function App() {
   const [editingDeptId, setEditingDeptId] = useState<string | null>(null);
   const [editingDeptName, setEditingDeptName] = useState('');
   const [newDeptName, setNewDeptName] = useState('');
+
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const handleDrop = async (targetIdx: number) => {
+    if (draggedIdx === null || draggedIdx === targetIdx) return;
+
+    const reordered = [...departments];
+    const [removed] = reordered.splice(draggedIdx, 1);
+    reordered.splice(targetIdx, 0, removed);
+
+    // Optimistically update local state for fast UI response
+    setDepartments(reordered);
+
+    try {
+      const promises = reordered.map((dept, i) =>
+        setDoc(doc(db, 'departments', dept.id), { order: i }, { merge: true })
+      );
+      await Promise.all(promises);
+    } catch (err) {
+      console.error("Error updating department order:", err);
+    }
+  };
 
   const handleAddDept = async () => {
     if (!newDeptName.trim()) return;
@@ -129,7 +153,14 @@ export default function App() {
       where('quarter', '==', quarter)
     );
     return onSnapshot(qOkrs, (snapshot) => {
-      setAllOkrs(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as OKR)));
+      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as OKR));
+      docs.sort((a, b) => {
+        const timeA = a.createdAt || 0;
+        const timeB = b.createdAt || 0;
+        if (timeA !== timeB) return timeA - timeB;
+        return a.id.localeCompare(b.id);
+      });
+      setAllOkrs(docs);
     });
   }, [quarter, year]);
 
@@ -356,26 +387,76 @@ export default function App() {
         <div className="p-8">
           <AnimatePresence mode="wait">
             {view === 'dashboard' ? (
-              <motion.div 
-                key="dashboard"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch"
-              >
-                 {departments.map((dept, idx) => (
-                   <div key={dept.id} className="flex flex-col h-full">
-                     <DeptSummaryCard 
-                        department={dept} 
-                        month={month} 
-                        year={year} 
-                        reportMode={reportMode}
-                        stats={getDeptStats(dept.id)}
-                        onClick={() => { setSelectedDept(dept); setView('department'); }}
-                      />
-                   </div>
-                 ))}
-              </motion.div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
+                  <span className="flex items-center gap-1.5 bg-indigo-50/50 text-indigo-600 px-3 py-1.5 rounded-full border border-indigo-100">
+                    <svg className="w-3.5 h-3.5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <line x1="4" y1="9" x2="20" y2="9" strokeWidth="2" strokeLinecap="round" />
+                      <line x1="4" y1="15" x2="20" y2="15" strokeWidth="2" strokeLinecap="round" />
+                      <circle cx="8" cy="9" r="1.5" fill="currentColor" />
+                      <circle cx="16" cy="9" r="1.5" fill="currentColor" />
+                      <circle cx="8" cy="15" r="1.5" fill="currentColor" />
+                      <circle cx="16" cy="15" r="1.5" fill="currentColor" />
+                    </svg>
+                    Mẹo: Giữ & kéo thả các bộ phận bên dưới để thay đổi thứ tự sắp xếp hiển thị
+                  </span>
+                </div>
+                <motion.div 
+                  key="dashboard"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch"
+                >
+                   {departments.map((dept, idx) => {
+                     const isDragging = draggedIdx === idx;
+                     const isDragOver = dragOverIdx === idx;
+                     return (
+                       <div 
+                         key={dept.id} 
+                         draggable
+                         onDragStart={(e) => {
+                           setDraggedIdx(idx);
+                           e.dataTransfer.effectAllowed = 'move';
+                         }}
+                         onDragOver={(e) => {
+                           e.preventDefault();
+                           if (dragOverIdx !== idx) {
+                             setDragOverIdx(idx);
+                           }
+                         }}
+                         onDragLeave={() => {
+                           if (dragOverIdx === idx) {
+                             setDragOverIdx(null);
+                           }
+                         }}
+                         onDrop={async (e) => {
+                           e.preventDefault();
+                           await handleDrop(idx);
+                         }}
+                         onDragEnd={() => {
+                           setDraggedIdx(null);
+                           setDragOverIdx(null);
+                         }}
+                         className={cn(
+                           "flex flex-col h-full rounded-2xl transition-all duration-200 relative",
+                           isDragging ? "opacity-30 scale-95 border-2 border-dashed border-indigo-300" : "",
+                           isDragOver && !isDragging ? "border-2 border-indigo-500 scale-[1.02] shadow-xl shadow-indigo-100/50" : ""
+                         )}
+                       >
+                         <DeptSummaryCard 
+                            department={dept} 
+                            month={month} 
+                            year={year} 
+                            reportMode={reportMode}
+                            stats={getDeptStats(dept.id)}
+                            onClick={() => { setSelectedDept(dept); setView('department'); }}
+                          />
+                       </div>
+                     );
+                   })}
+                </motion.div>
+              </div>
             ) : (
               <motion.div
                 key="department"
@@ -472,8 +553,11 @@ function DeptSummaryCard({ department, month, year, reportMode, stats, onClick }
           <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors shadow-inner">
             <Building2 className="w-5 h-5" />
           </div>
-          <div className="px-2 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-lg uppercase tracking-wide">
-            Cập nhật
+          <div className="flex items-center gap-2">
+            <div className="px-2 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-lg uppercase tracking-wide">
+              Cập nhật
+            </div>
+            <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 transition-colors cursor-grab" />
           </div>
         </div>
         <h3 className="font-bold text-slate-900 mb-1 text-base leading-snug line-clamp-2">{department.name}</h3>

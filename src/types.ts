@@ -13,6 +13,7 @@ export interface Objective {
   quarter: number;
   perspective: BSCPerspective;
   content: string;
+  createdAt?: number;
 }
 
 export interface OKR {
@@ -31,6 +32,8 @@ export interface OKR {
   unit: string;
   notesNextMonth?: string;    // Ghi chú tháng tiếp theo
   notesNextQuarter?: string;  // Ghi chú quý tiếp theo
+  createdAt?: number;         // Timestamp of creation for ordering
+  order?: number;             // Sort order of KRs under objective
   // Legacy support
   objective?: string;         
 }
@@ -45,6 +48,8 @@ export interface MonthlyReport {
   actualAccumulated?: string; // For Form 03: Kết quả đã thực hiện (accumulated)
   status: 'achieved' | 'not_achieved';
   notes: string;
+  targetMonth?: string;       // Month-specific target
+  targetQuarter?: string;     // Quarter-specific target (loaded for reference)
 }
 
 export interface QuarterlyReport {
@@ -57,6 +62,7 @@ export interface QuarterlyReport {
   actualAccumulated?: string; // For Form 02 Phụ lục 02
   status: 'achieved' | 'not_achieved';
   notes: string;
+  targetQuarter?: string;     // Quarter-specific target
 }
 
 export interface Risk {
