@@ -76,6 +76,7 @@ export default function App() {
 
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
 
   const handleDrop = async (targetIdx: number) => {
     if (draggedIdx === null || draggedIdx === targetIdx) return;
@@ -189,28 +190,58 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex font-sans text-slate-800">
-      {/* Sidebar */}
-      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">
+      {/* Sidebar spacer to prevent layout overlap */}
+      <div className="w-16 shrink-0 select-none pointer-events-none" />
+
+      {/* Sidebar - Auto hide to 16, expands to 72 on hover */}
+      <aside 
+        onMouseEnter={() => setIsSidebarHovered(true)}
+        onMouseLeave={() => {
+          setIsSidebarHovered(false);
+          // Also reset managing depts on collapse for clean state
+          setIsManagingDepts(false);
+        }}
+        className={cn(
+          "fixed top-0 left-0 h-full bg-white border-r border-slate-200 flex flex-col z-35 transition-all duration-300 ease-in-out shadow-sm select-none",
+          isSidebarHovered ? "w-72 shadow-2xl shadow-indigo-900/10" : "w-16"
+        )}
+      >
+        <div className={cn(
+          "border-b border-slate-100 flex items-center transition-all duration-300",
+          isSidebarHovered ? "p-6 justify-between h-16" : "p-4 justify-center h-16"
+        )}>
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="w-8 h-8 shrink-0 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-black shadow-md shadow-indigo-100 text-sm">
               O
             </div>
-            <span className="font-bold text-slate-900 text-sm tracking-tight uppercase">OKR Central</span>
+            {isSidebarHovered && (
+              <motion.span 
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="font-bold text-slate-900 text-sm tracking-tight uppercase whitespace-nowrap"
+              >
+                OKR Central
+              </motion.span>
+            )}
           </div>
-          <button 
-            onClick={() => setIsManagingDepts(!isManagingDepts)}
-            className={cn("p-1.5 rounded-lg transition-colors", isManagingDepts ? "bg-indigo-50 text-indigo-600" : "text-slate-400 hover:bg-slate-100")}
-          >
-            <Settings className="w-4 h-4" />
-          </button>
+          {isSidebarHovered && (
+            <button 
+              onClick={() => setIsManagingDepts(!isManagingDepts)}
+              className={cn(
+                "p-1.5 rounded-lg transition-colors shrink-0 cursor-pointer",
+                isManagingDepts ? "bg-indigo-50 text-indigo-600" : "text-slate-400 hover:bg-slate-100"
+              )}
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto no-scrollbar">
-          {isManagingDepts ? (
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto no-scrollbar">
+          {isManagingDepts && isSidebarHovered ? (
             <div className="space-y-4">
               <div className="px-2 py-1">
-                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Quản lý bộ phận</span>
+                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block whitespace-nowrap">Quản lý bộ phận</span>
               </div>
               <div className="space-y-2">
                 {departments.map(dept => (
@@ -270,48 +301,105 @@ export default function App() {
               <button 
                 onClick={() => { setView('dashboard'); setSelectedDept(null); }}
                 className={cn(
-                  "w-full px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-3 transition-colors",
-                  view === 'dashboard' ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                  "w-full rounded-lg text-sm font-bold flex items-center transition-all duration-200 cursor-pointer",
+                  isSidebarHovered ? "px-4 py-2.5 gap-3 justify-start" : "p-3 justify-center",
+                  view === 'dashboard' ? "bg-indigo-50 text-indigo-700 font-extrabold" : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
                 )}
+                title={!isSidebarHovered ? "Tổng quan Dashboard" : undefined}
               >
-                <LayoutDashboard className="w-4 h-4" />
-                Tổng quan Dashboard
+                <LayoutDashboard className="w-4 h-4 shrink-0" />
+                {isSidebarHovered && (
+                  <motion.span 
+                    initial={{ opacity: 0, x: -5 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="whitespace-nowrap"
+                  >
+                    Tổng quan Dashboard
+                  </motion.span>
+                )}
               </button>
               
-              <div className="pt-4 pb-2 px-4">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">BỘ PHẬN ({departments.length})</span>
-              </div>
-              <div className="space-y-0.5">
-                {departments.map(dept => (
-                  <button 
-                    key={dept.id}
-                    onClick={() => { setSelectedDept(dept); setView('department'); }}
-                    className={cn(
-                      "w-full px-4 py-2.5 rounded-lg text-sm flex items-center justify-between transition-colors",
-                      selectedDept?.id === dept.id ? "bg-indigo-50 text-indigo-700 font-bold" : "text-slate-600 hover:bg-slate-50"
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      {selectedDept?.id === dept.id && <motion.span layoutId="active-dot" className="w-1.5 h-1.5 rounded-full bg-indigo-600"></motion.span>}
-                      <span className="truncate text-left">{dept.name}</span>
-                    </div>
-                    <ChevronRight className={cn("w-3 h-3 text-indigo-400 transition-transform", selectedDept?.id === dept.id ? "opacity-100 rotate-90" : "opacity-0")} />
-                  </button>
-                ))}
+              {isSidebarHovered ? (
+                <div className="pt-4 pb-2 px-4 transition-all whitespace-nowrap select-none">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">BỘ PHẬN ({departments.length})</span>
+                </div>
+              ) : (
+                <div className="py-2.5 flex justify-center select-none">
+                  <div className="w-8 h-[2px] bg-slate-200 rounded-full" />
+                </div>
+              )}
+
+              <div className="space-y-1">
+                {departments.map((dept) => {
+                  const isSelected = selectedDept?.id === dept.id;
+                  
+                  // Extract two-letter department initials nicely
+                  const cleanName = dept.name.replace(/^(Phòng|Ban|Bộ phận)\s+/i, '').trim();
+                  const words = cleanName.split(/\s+/);
+                  const initials = words.length >= 2 
+                    ? (words[0].charAt(0) + words[1].charAt(0)).toUpperCase()
+                    : cleanName.slice(0, 2).toUpperCase();
+
+                  return (
+                    <button 
+                      key={dept.id}
+                      onClick={() => { setSelectedDept(dept); setView('department'); }}
+                      className={cn(
+                        "w-full rounded-lg text-sm flex items-center transition-all duration-150 relative cursor-pointer",
+                        isSidebarHovered ? "px-4 py-2.5 justify-between" : "p-2 justify-center",
+                        isSelected ? "bg-indigo-50 text-indigo-700 font-bold" : "text-slate-600 hover:bg-slate-50"
+                      )}
+                      title={!isSidebarHovered ? dept.name : undefined}
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden w-full">
+                        {isSelected && !isSidebarHovered && (
+                          <div className="absolute left-0 top-2 bottom-2 w-[3px] bg-indigo-600 rounded-r-lg" />
+                        )}
+                        {isSelected && isSidebarHovered && (
+                          <motion.span layoutId="active-dot" className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0"></motion.span>
+                        )}
+                        {isSidebarHovered ? (
+                          <span className="truncate text-left whitespace-nowrap block flex-1">{dept.name}</span>
+                        ) : (
+                          <span className={cn(
+                            "text-[10px] font-black w-8 h-8 flex items-center justify-center rounded-lg transition-all shadow-sm shrink-0 border uppercase",
+                            isSelected 
+                              ? "bg-indigo-600 text-white border-indigo-600" 
+                              : "bg-slate-50 text-slate-500 border-slate-100 hover:bg-slate-100 hover:text-slate-705"
+                          )}>
+                            {initials}
+                          </span>
+                        )}
+                      </div>
+                      {isSidebarHovered && (
+                        <ChevronRight className={cn("w-3 h-3 text-indigo-400 transition-transform shrink-0", isSelected ? "opacity-100 rotate-90" : "opacity-0")} />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </>
           )}
         </nav>
 
-        <div className="p-4 border-t border-slate-100">
-          <div className="flex items-center gap-3 px-4 py-3 text-slate-700 bg-slate-50 rounded-xl border border-slate-100">
-            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+        <div className={cn("border-t border-slate-100 transition-all duration-300 shrink-0", isSidebarHovered ? "p-4" : "p-2")}>
+          <div className={cn(
+            "flex items-center text-slate-700 bg-slate-50 rounded-xl border border-slate-100 overflow-hidden transition-all duration-300",
+            isSidebarHovered ? "px-4 py-3 gap-3" : "p-2 justify-center"
+          )}>
+            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
                <FileBarChart className="w-4 h-4" />
             </div>
-            <div className="flex-1 min-w-0">
-               <p className="text-xs font-bold truncate">Hệ thống báo cáo</p>
-               <p className="text-[10px] text-slate-400 truncate tracking-tight">V1.0.2 - {year}</p>
-            </div>
+            {isSidebarHovered && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex-1 min-w-0"
+              >
+                 <p className="text-xs font-bold truncate">Hệ thống báo cáo</p>
+                 <p className="text-[10px] text-slate-400 truncate tracking-tight">V1.0.2 - {year}</p>
+              </motion.div>
+            )}
           </div>
         </div>
       </aside>
