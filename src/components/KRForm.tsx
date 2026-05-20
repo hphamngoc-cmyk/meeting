@@ -76,21 +76,28 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
 
       const krId = krDocRef.id;
 
-      // Always populate the current month's report target if in monthly mode
-      if (mode === 'monthly') {
-        const mReportId = `${deptId}_${krId}_m${month}_${year}`;
-        await setDoc(doc(db, 'reports', mReportId), {
-          deptId,
-          krId,
-          month,
-          year,
-          targetMonth: parseValue(targetMonth),
-          targetQuarter: parseValue(targetQuarter),
-          actual: '',
-          status: '',
-          notes: ''
-        }, { merge: true });
+      // Sync targetQuarter to ALL 3 months of this quarter in the reports collection, and set targetMonth for current month
+      const startM = (quarter - 1) * 3 + 1;
+      const mPromises = [];
+      const pq = parseValue(targetQuarter);
+      for (let m = startM; m <= quarter * 3; m++) {
+        const mReportId = `${deptId}_${krId}_m${m}_${year}`;
+        const isCurrentMonth = m === month;
+        mPromises.push(
+          setDoc(doc(db, 'reports', mReportId), {
+            deptId,
+            krId,
+            month: m,
+            year,
+            ...(isCurrentMonth && mode === 'monthly' ? { targetMonth: parseValue(targetMonth) } : {}),
+            targetQuarter: pq,
+            actual: '',
+            status: '',
+            notes: ''
+          }, { merge: true })
+        );
       }
+      await Promise.all(mPromises);
 
       // Always populate the current quarter's report target
       const qReportId = `${deptId}_${krId}_q${quarter}_${year}`;
@@ -99,7 +106,7 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
         krId,
         quarter,
         year,
-        targetQuarter: parseValue(targetQuarter),
+        targetQuarter: pq,
         actual: '',
         status: '',
         notes: ''

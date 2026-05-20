@@ -46,6 +46,7 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
   const [okrs, setOkrs] = useState<OKR[]>([]);
   const [reports, setReports] = useState<Record<string, MonthlyReport>>({});
   const [qReports, setQReports] = useState<Record<string, QuarterlyReport>>({});
+  const [quarterlyMonthlyReports, setQuarterlyMonthlyReports] = useState<Record<string, MonthlyReport[]>>({});
   
   // Historical reports for Form 03
   const [historyReports, setHistoryReports] = useState<Record<string, any[]>>({});
@@ -136,6 +137,53 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
     });
   }, [deptId, month, quarter, year, mode]);
 
+  const okrIdsString = okrs.map(o => o.id).sort().join(',');
+
+  useEffect(() => {
+    if (mode !== 'quarterly') {
+      setQuarterlyMonthlyReports({});
+      return;
+    }
+    const startMonth = (quarter - 1) * 3 + 1;
+    const endMonth = quarter * 3;
+    const q = query(
+      collection(db, 'reports'),
+      where('deptId', '==', deptId),
+      where('year', '==', year)
+    );
+    return onSnapshot(q, (snapshot) => {
+      const map: Record<string, any[]> = {};
+      const activeOkrIds = okrIdsString.split(',').filter(Boolean);
+      snapshot.docs.forEach(d => {
+        const data = d.data() as any;
+        const m = Number(data.month || 0);
+        const rDeptId = data.deptId;
+        const matchesDept = rDeptId === deptId || activeOkrIds.includes(data.krId);
+        if (matchesDept && m >= startMonth && m <= endMonth) {
+          if (!map[data.krId]) map[data.krId] = [];
+          map[data.krId].push({ id: d.id, ...data });
+        }
+      });
+      setQuarterlyMonthlyReports(map);
+    });
+  }, [deptId, quarter, year, mode, okrIdsString]);
+
+  const getSyncedTargetQuarter = (krId: string): any => {
+    if (mode === 'monthly') {
+      return reports[krId]?.targetQuarter ?? okrs.find(o => o.id === krId)?.targetQuarter ?? '';
+    }
+    const mReps = quarterlyMonthlyReports[krId] || [];
+    if (mReps.length > 0) {
+      const sorted = [...mReps].sort((a, b) => (b.month || 0) - (a.month || 0));
+      for (const r of sorted) {
+        if (r.targetQuarter !== undefined && r.targetQuarter !== null && r.targetQuarter !== '') {
+          return r.targetQuarter;
+        }
+      }
+    }
+    return qReports[krId]?.targetQuarter ?? okrs.find(o => o.id === krId)?.targetQuarter ?? '';
+  };
+
   useEffect(() => {
     if (form !== 'next_period') return;
 
@@ -189,6 +237,41 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
 
     const docId = existing?.id || `${deptId}_${krId}_${mode === 'monthly' ? 'm' + month : 'q' + quarter}_${year}`;
     await setDoc(doc(db, coll, docId), reportData, { merge: true });
+
+    // Synchronize targetQuarter bidirectionally
+    if (field === 'targetQuarter') {
+      // 1. Always update the main OKR document
+      await setDoc(doc(db, 'okrs', krId), {
+        targetQuarter: cleanValue
+      }, { merge: true });
+
+      // 2. Always sync to q_reports for this quarter
+      const qDocId = `${deptId}_${krId}_q${quarter}_${year}`;
+      await setDoc(doc(db, 'q_reports', qDocId), {
+        deptId,
+        krId,
+        quarter,
+        year,
+        targetQuarter: cleanValue
+      }, { merge: true });
+
+      // 3. Always sync to ALL 3 months of this quarter in the reports collection!
+      const startM = (quarter - 1) * 3 + 1;
+      const promises = [];
+      for (let m = startM; m <= quarter * 3; m++) {
+        const mDocId = `${deptId}_${krId}_m${m}_${year}`;
+        promises.push(
+          setDoc(doc(db, 'reports', mDocId), {
+            deptId,
+            krId,
+            month: m,
+            year,
+            targetQuarter: cleanValue
+          }, { merge: true })
+        );
+      }
+      await Promise.all(promises);
+    }
   };
 
   const handleAnalyzeNotes = async (krId: string) => {
@@ -558,25 +641,25 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                               )}
                             >
                               {/* Column 1: KR content */}
-                              <td className={cn("py-1 px-2 border-r border-slate-200 bg-white", getColClass(0, headers.length))}>
-                                <div className="flex items-center justify-start flex-wrap gap-x-2 gap-y-0.5">
-                                  <div className="flex items-center gap-1">
-                                    <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-amber-500 cursor-grab shrink-0" />
-                                    <span className="text-slate-600 text-[11px] font-bold leading-relaxed">
+                              <td className={cn("py-1.5 px-3 border-r border-slate-200 bg-white relative group", getColClass(0, headers.length))}>
+                                <div className="flex items-start justify-between gap-2 min-h-[20px]">
+                                  <div className="flex items-start gap-1.5 flex-1 min-w-0">
+                                    <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-amber-500 cursor-grab shrink-0 mt-0.5" />
+                                    <span className="text-slate-600 text-[11px] font-bold leading-normal break-words">
                                       KR{kIdx + 1}. {okr.kr}
                                     </span>
                                   </div>
-                                  <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 items-center justify-end self-center bg-white/90 pl-1">
                                     <button 
                                       onClick={() => handleEditKRClick(okr)}
-                                      className="p-0.5 text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
+                                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded transition-colors cursor-pointer"
                                       title="Sửa KR"
                                     >
                                       <Edit3 className="w-3.5 h-3.5" />
                                     </button>
                                     <button 
                                       onClick={() => handleDeleteKRClick(okr)}
-                                      className="p-0.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded transition-colors cursor-pointer"
                                       title="Xóa KR"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
@@ -586,23 +669,22 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                               </td>
                               
                               {/* Column 2: Đơn vị tính */}
-                              <td className={cn("py-1 px-1.5 text-center border-r border-slate-200 bg-white font-sans text-[11px] font-semibold text-slate-600", getColClass(1, headers.length))}>
+                              <td className={cn("py-1.5 px-2 text-center border-r border-slate-200 bg-white font-sans text-[11px] font-semibold text-slate-600 align-middle", getColClass(1, headers.length))}>
                                 {okr.unit || '-'}
                               </td>
                               
                               {/* Column 3: targetYear / targetQuarter */}
-                              <td className={cn("py-0.5 px-1 text-center border-r border-slate-200 bg-white font-mono", getColClass(2, headers.length))}>
+                              <td className={cn("py-1 px-1.5 text-center border-r border-slate-200 bg-white font-mono align-middle", getColClass(2, headers.length))}>
                                 {(() => {
                                   const isShiftedQuarter = mode === 'monthly' && month % 3 === 0 && form === 'next_period';
                                   const rawVal = isShiftedQuarter
                                     ? (okr.targetNextQuarter ?? '')
                                     : (mode === 'monthly' 
-                                        ? (report?.targetQuarter ?? okr.targetQuarter ?? '') 
+                                        ? getSyncedTargetQuarter(okr.id) 
                                         : (okr.targetYear ?? ''));
                                   const inputValue = formatValue(rawVal);
-                                  const inputWidth = Math.max(45, Math.min(100, inputValue.length * 7.5 + 15));
                                   return (
-                                    <div className="flex items-center justify-center gap-1 inline-flex flex-wrap">
+                                    <div className="flex items-center justify-center py-0.5">
                                       <SafeInput 
                                         type="text"
                                         value={inputValue}
@@ -619,14 +701,13 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                           }
                                         }}
                                         placeholder="..."
-                                        style={{ width: `${inputWidth}px` }}
-                                        className="font-mono text-xs font-bold py-0.5 px-1 rounded-md border border-slate-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none bg-slate-50/50 transition-all text-center text-slate-700 hover:border-slate-300"
+                                        className="w-20 font-mono text-xs font-bold py-0.5 px-1 rounded-md border border-slate-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none bg-slate-50/50 transition-all text-center text-slate-700 hover:border-slate-300"
                                       />
                                     </div>
                                   );
                                 })()}
                               </td>
-   
+    
                               {/* Non-Performance (Next period target columns or history columns) */}
                               {form === 'next_period' && Array.from({ length: histColsCount }).map((_, i) => {
                                 const periodIdx = mode === 'monthly' ? ((quarter - 1) * 3 + 1 + i) : (i + 1);
@@ -636,7 +717,7 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                   <td 
                                     key={i} 
                                     className={cn(
-                                      "py-1 px-1.5 text-center border-r border-slate-200 font-mono text-xs font-bold transition-all", 
+                                      "py-1.5 px-2 text-center border-r border-slate-200 font-mono text-xs font-bold transition-all align-middle", 
                                       getColClass(colIndex, headers.length),
                                       hReport?.status === 'achieved' && "text-emerald-700 bg-emerald-50/50",
                                       hReport?.status === 'not_achieved' && "text-rose-700 bg-rose-50/50",
@@ -647,18 +728,17 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                   </td>
                                 );
                               })}
-   
+    
                               {/* Column 4: targetMonth or targetQuarter */}
                               {form === 'performance' && (
-                                <td className={cn("py-0.5 px-1 text-center border-r border-slate-200 bg-white font-mono", getColClass(3, headers.length))}>
+                                <td className={cn("py-1 px-1.5 text-center border-r border-slate-200 bg-white font-mono align-middle", getColClass(3, headers.length))}>
                                   {(() => {
                                     const rawVal = mode === 'monthly'
                                       ? (report?.targetMonth ?? '')
-                                      : (report?.targetQuarter ?? '');
+                                      : getSyncedTargetQuarter(okr.id);
                                     const inputValue = formatValue(rawVal);
-                                    const inputWidth = Math.max(45, Math.min(100, inputValue.length * 7.5 + 15));
                                     return (
-                                      <div className="flex items-center justify-center gap-1 inline-flex flex-wrap">
+                                      <div className="flex items-center justify-center py-0.5">
                                         <SafeInput 
                                           type="text"
                                           value={inputValue}
@@ -673,25 +753,23 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                             }
                                           }}
                                           placeholder="..."
-                                          style={{ width: `${inputWidth}px` }}
-                                          className="font-mono text-xs font-black py-0.5 px-1 rounded-md border border-slate-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none bg-slate-50/50 transition-all text-center text-indigo-700 hover:border-slate-300"
+                                          className="w-20 font-mono text-xs font-bold py-0.5 px-1 rounded-md border border-slate-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none bg-slate-50/50 transition-all text-center text-indigo-700 hover:border-slate-300"
                                         />
                                       </div>
                                     );
                                   })()}
                                 </td>
                               )}
-   
+    
                               {/* Column 5: Actual Result Input */}
-                              <td className={cn("py-0.5 px-1 text-center border-r border-slate-200 bg-white font-mono", getColClass(form === 'performance' ? 4 : 3 + histColsCount, headers.length))}>
+                              <td className={cn("py-1 px-1.5 text-center border-r border-slate-200 bg-white font-mono align-middle", getColClass(form === 'performance' ? 4 : 3 + histColsCount, headers.length))}>
                                  {(() => {
                                    const rawVal = form === 'performance' 
                                      ? (report?.actual ?? '') 
                                      : (mode === 'monthly' ? (okr.targetNextMonth ?? '') : (okr.targetNextQuarter ?? ''));
                                    const inputValue = formatValue(rawVal);
-                                   const inputWidth = Math.max(45, Math.min(100, inputValue.length * 7.5 + 15));
                                    return (
-                                     <div className="flex items-center justify-center gap-1 inline-flex flex-wrap">
+                                     <div className="flex items-center justify-center py-0.5">
                                         <SafeInput 
                                           type="text"
                                           value={inputValue}
@@ -706,9 +784,8 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                             }
                                           }}
                                           placeholder="..."
-                                          style={{ width: `${inputWidth}px` }}
                                           className={cn(
-                                            "font-mono text-xs font-black py-0.5 px-1 rounded-md border outline-none transition-all text-center",
+                                            "w-20 font-mono text-xs font-bold py-0.5 px-1 rounded-md border outline-none transition-all text-center",
                                             form === 'performance' && report?.status === 'achieved' && "text-emerald-700 bg-emerald-50/70 border-emerald-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 hover:border-emerald-300",
                                             form === 'performance' && report?.status === 'not_achieved' && "text-rose-700 bg-rose-50/70 border-rose-200 focus:border-rose-600 focus:ring-1 focus:ring-rose-600 hover:border-rose-300",
                                             (form !== 'performance' || !report?.status) && "border-slate-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 bg-slate-50/50 text-slate-700 hover:border-slate-300"
@@ -718,15 +795,15 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                    );
                                  })()}
                               </td>
-  
+   
                               {/* Column 5: Status (Evaluation - only performance) */}
                               {form === 'performance' && (
-                                <td className={cn("py-1 px-1 text-center border-r border-slate-200 bg-white font-sans", getColClass(headers.length - 2, headers.length))}>
+                                <td className={cn("py-1 px-1.5 text-center border-r border-slate-200 bg-white font-sans align-middle", getColClass(headers.length - 2, headers.length))}>
                                   <select
                                     value={report?.status || ''}
                                     onChange={(e) => handleUpdateReport(okr.id, 'status', e.target.value)}
                                     className={cn(
-                                      "font-bold text-[11px] bg-slate-50 border border-slate-200 py-0.5 px-1 rounded-md focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none cursor-pointer text-center mx-auto block w-full max-w-[110px] appearance-auto font-sans transition-all duration-150",
+                                      "font-bold text-[11px] bg-slate-50 border border-slate-200 py-0.5 px-1 rounded-md focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none cursor-pointer text-center mx-auto block w-full max-w-[110px] appearance-auto font-sans transition-all duration-150 shadow-sm",
                                       report?.status === 'achieved' && "text-emerald-700 bg-emerald-50/70 border-emerald-200",
                                       report?.status === 'not_achieved' && "text-rose-700 bg-rose-50/70 border-rose-200",
                                       (!report?.status) && "text-slate-500 hover:bg-slate-100"
@@ -738,10 +815,10 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                   </select>
                                 </td>
                               )}
-  
+   
                               {/* Column 6: Ghi chú */}
-                              <td className={cn("py-1 px-1 bg-white hover:bg-slate-50/40 transition-colors text-center", getColClass(headers.length - 1, headers.length))}>
-                                <div className="flex items-center justify-center min-h-[24px]">
+                              <td className={cn("py-1 px-1 bg-white hover:bg-slate-50/40 transition-colors text-center align-middle", getColClass(headers.length - 1, headers.length))}>
+                                <div className="flex items-center justify-center min-h-[22px]">
                                   {(() => {
                                     const notesVal = form === 'performance'
                                       ? (report?.notes || '')

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { parseValue } from '../lib/format';
 
 interface SafeInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> {
   value: string;
@@ -8,10 +9,11 @@ interface SafeInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement
 export function SafeInput({ value, onValueChange, ...props }: SafeInputProps) {
   const [localValue, setLocalValue] = useState(value);
   const isComposing = useRef(false);
+  const isFocused = useRef(false);
 
   useEffect(() => {
-    // Only update from parents if composition is not active
-    if (!isComposing.current) {
+    // Only update from parents if composition is not active and not focused
+    if (!isComposing.current && !isFocused.current) {
       setLocalValue(value);
     }
   }, [value]);
@@ -34,9 +36,29 @@ export function SafeInput({ value, onValueChange, ...props }: SafeInputProps) {
     onValueChange(finalVal);
   };
 
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    isFocused.current = true;
+    
+    // On focus, check if the input is a numeric/formatted field
+    // (We parse the displayed/formatted value to standard clean raw format for easy editing)
+    const clean = parseValue(e.target.value);
+    if (clean !== '' && !isNaN(Number(clean))) {
+      setLocalValue(clean);
+    }
+
+    if (props.onFocus) {
+      props.onFocus(e);
+    }
+  };
+
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    isFocused.current = false;
     isComposing.current = false;
     onValueChange(e.target.value);
+    
+    // Revert to parent's formatted value on blur
+    setLocalValue(value);
+    
     if (props.onBlur) {
       props.onBlur(e);
     }
@@ -49,6 +71,7 @@ export function SafeInput({ value, onValueChange, ...props }: SafeInputProps) {
       onChange={handleChange}
       onCompositionStart={handleCompositionStart}
       onCompositionEnd={handleCompositionEnd}
+      onFocus={handleFocus}
       onBlur={handleBlur}
     />
   );
