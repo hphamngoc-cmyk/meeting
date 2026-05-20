@@ -1,0 +1,122 @@
+{
+  "entities": {
+    "Department": {
+      "title": "Department",
+      "description": "A department/unit within the organization.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["name"]
+    },
+    "Objective": {
+      "title": "Objective",
+      "description": "A top-level objective (O) linked to a BSC perspective.",
+      "type": "object",
+      "properties": {
+        "deptId": { "type": "string" },
+        "year": { "type": "number" },
+        "quarter": { "type": "number" },
+        "perspective": { "type": "string", "enum": ["FINANCE", "CUSTOMER", "PROCESS", "LEARNING"] },
+        "content": { "type": "string" }
+      },
+      "required": ["deptId", "year", "quarter", "perspective", "content"]
+    },
+    "OKR": {
+      "title": "OKR",
+      "description": "A Key Result (KR) linked to an objective.",
+      "type": "object",
+      "properties": {
+        "deptId": { "type": "string" },
+        "year": { "type": "number" },
+        "quarter": { "type": "number" },
+        "perspective": { "type": "string", "enum": ["FINANCE", "CUSTOMER", "PROCESS", "LEARNING"] },
+        "objectiveId": { "type": "string" },
+        "kr": { "type": "string" },
+        "targetYear": { "type": "string" },
+        "targetQuarter": { "type": "string" },
+        "targetMonth": { "type": "string" },
+        "targetNextMonth": { "type": "string" },
+        "targetNextQuarter": { "type": "string" },
+        "unit": { "type": "string" }
+      },
+      "required": ["deptId", "year", "quarter", "perspective", "objectiveId", "kr"]
+    },
+    "MonthlyReport": {
+      "title": "Monthly Report",
+      "description": "Performance result for a specific KR in a specific month.",
+      "type": "object",
+      "properties": {
+        "deptId": { "type": "string" },
+        "krId": { "type": "string" },
+        "month": { "type": "number" },
+        "year": { "type": "number" },
+        "actual": { "type": "string" },
+        "actualAccumulated": { "type": "string" },
+        "status": { "type": "string", "enum": ["achieved", "not_achieved"] },
+        "notes": { "type": "string" }
+      },
+      "required": ["deptId", "krId", "month", "year", "status"]
+    },
+    "QuarterlyReport": {
+      "title": "Quarterly Report",
+      "description": "Performance result for a specific KR in a specific quarter.",
+      "type": "object",
+      "properties": {
+        "deptId": { "type": "string" },
+        "krId": { "type": "string" },
+        "quarter": { "type": "number" },
+        "year": { "type": "number" },
+        "actual": { "type": "string" },
+        "actualAccumulated": { "type": "string" },
+        "status": { "type": "string", "enum": ["achieved", "not_achieved"] },
+        "notes": { "type": "string" }
+      },
+      "required": ["deptId", "krId", "quarter", "year", "status"]
+    },
+    "Risk": {
+      "title": "Risk & Barrier",
+      "description": "Analysis of risks and proposed solutions.",
+      "type": "object",
+      "properties": {
+        "deptId": { "type": "string" },
+        "month": { "type": "number" },
+        "quarter": { "type": "number" },
+        "year": { "type": "number" },
+        "description": { "type": "string" },
+        "level": { "type": "string", "enum": ["High", "Medium", "Low"] },
+        "impact": { "type": "string" },
+        "solution": { "type": "string" },
+        "collaborator": { "type": "string" }
+      },
+      "required": ["deptId", "quarter", "year", "description", "level"]
+    }
+  },
+  "firestore": {
+    "/departments/{deptId}": {
+      "schema": "Department",
+      "description": "Corporate departments."
+    },
+    "/objectives/{objectiveId}": {
+      "schema": "Objective",
+      "description": "Strategic objectives (O) per department."
+    },
+    "/okrs/{okrId}": {
+      "schema": "OKR",
+      "description": "Strategic OKRs per department and quarter."
+    },
+    "/reports/{reportId}": {
+      "schema": "MonthlyReport",
+      "description": "Monthly achievements and notes."
+    },
+    "/q_reports/{reportId}": {
+      "schema": "QuarterlyReport",
+      "description": "Quarterly achievements."
+    },
+    "/risks/{riskId}": {
+      "schema": "Risk",
+      "description": "Risk management records."
+    }
+  }
+}

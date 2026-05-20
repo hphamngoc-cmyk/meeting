@@ -1,0 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Roboto", ui-sans-serif, system-ui, sans-serif;
+  --color-primary: var(--color-indigo-600);
+  --color-primary-foreground: var(--color-white);
+  --color-secondary: var(--color-slate-100);
+  --color-secondary-foreground: var(--color-slate-900);
+  --color-muted: var(--color-slate-50);
+  --color-muted-foreground: var(--color-slate-500);
+  --color-accent: var(--color-indigo-50);
+  --color-accent-foreground: var(--color-indigo-700);
+  --color-border: var(--color-slate-200);
+  --color-background: #F8FAFC;
+}
+
+@layer base {
+  body {
+    @apply font-sans;
+  }
+}
+
+/* Custom scrollbar for better UI */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

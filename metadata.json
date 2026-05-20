@@ -1,0 +1,8 @@
+{
+  "name": "Hệ thống Báo cáo OKR Hàng tháng",
+  "description": "Phần mềm quản lý và tổng hợp kết quả công việc hàng tháng gắn với OKR cho 13 bộ phận, hỗ trợ xuất báo cáo sang PowerPoint.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
