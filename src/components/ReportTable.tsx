@@ -633,7 +633,16 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                 const hReport = hist.find(h => (mode === 'monthly' ? h.month : h.quarter) === periodIdx);
                                 const colIndex = 3 + i;
                                 return (
-                                  <td key={i} className={cn("py-1 px-1.5 text-center border-r border-slate-200 bg-white font-mono text-xs font-bold text-slate-500", getColClass(colIndex, headers.length))}>
+                                  <td 
+                                    key={i} 
+                                    className={cn(
+                                      "py-1 px-1.5 text-center border-r border-slate-200 font-mono text-xs font-bold transition-all", 
+                                      getColClass(colIndex, headers.length),
+                                      hReport?.status === 'achieved' && "text-emerald-700 bg-emerald-50/50",
+                                      hReport?.status === 'not_achieved' && "text-rose-700 bg-rose-50/50",
+                                      (!hReport?.status) && "text-slate-500 bg-white"
+                                    )}
+                                  >
                                     {formatValue(hReport?.actual) || '-'}
                                   </td>
                                 );
@@ -683,23 +692,28 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                    const inputWidth = Math.max(45, Math.min(100, inputValue.length * 7.5 + 15));
                                    return (
                                      <div className="flex items-center justify-center gap-1 inline-flex flex-wrap">
-                                       <SafeInput 
-                                         type="text"
-                                         value={inputValue}
-                                         onValueChange={(val) => {
-                                           const clean = parseValue(val);
-                                           if (clean === '' || !isNaN(Number(clean))) {
-                                             if (form === 'performance') handleUpdateReport(okr.id, 'actual', clean);
-                                             else {
-                                               const field = mode === 'monthly' ? 'targetNextMonth' : 'targetNextQuarter';
-                                               setDoc(doc(db, 'okrs', okr.id), { [field]: clean }, { merge: true });
-                                             }
-                                           }
-                                         }}
-                                         placeholder="..."
-                                         style={{ width: `${inputWidth}px` }}
-                                         className="font-mono text-xs font-black py-0.5 px-1 rounded-md border border-slate-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 outline-none bg-slate-50/50 transition-all text-center"
-                                       />
+                                        <SafeInput 
+                                          type="text"
+                                          value={inputValue}
+                                          onValueChange={(val) => {
+                                            const clean = parseValue(val);
+                                            if (clean === '' || !isNaN(Number(clean))) {
+                                              if (form === 'performance') handleUpdateReport(okr.id, 'actual', clean);
+                                              else {
+                                                const field = mode === 'monthly' ? 'targetNextMonth' : 'targetNextQuarter';
+                                                setDoc(doc(db, 'okrs', okr.id), { [field]: clean }, { merge: true });
+                                              }
+                                            }
+                                          }}
+                                          placeholder="..."
+                                          style={{ width: `${inputWidth}px` }}
+                                          className={cn(
+                                            "font-mono text-xs font-black py-0.5 px-1 rounded-md border outline-none transition-all text-center",
+                                            form === 'performance' && report?.status === 'achieved' && "text-emerald-700 bg-emerald-50/70 border-emerald-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 hover:border-emerald-300",
+                                            form === 'performance' && report?.status === 'not_achieved' && "text-rose-700 bg-rose-50/70 border-rose-200 focus:border-rose-600 focus:ring-1 focus:ring-rose-600 hover:border-rose-300",
+                                            (form !== 'performance' || !report?.status) && "border-slate-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 bg-slate-50/50 text-slate-700 hover:border-slate-300"
+                                          )}
+                                        />
                                      </div>
                                    );
                                  })()}
