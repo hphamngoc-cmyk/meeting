@@ -25,8 +25,8 @@ export async function exportToPPTX(departments: Department[], month: number, yea
   });
 
   // Fetch all Objectives, OKRs, Reports and Risks for the context
-  const objSnap = await getDocs(query(collection(db, 'objectives'), where('year', '==', year), where('quarter', '==', quarter)));
-  const okrSnap = await getDocs(query(collection(db, 'okrs'), where('year', '==', year), where('quarter', '==', quarter)));
+  const objSnap = await getDocs(query(collection(db, 'objectives'), where('year', '==', year), where('quarter', '==', reportMode === 'quarterly' ? 0 : quarter)));
+  const okrSnap = await getDocs(query(collection(db, 'okrs'), where('year', '==', year), where('quarter', '==', reportMode === 'quarterly' ? 0 : quarter)));
   
   const reportColl = reportMode === 'monthly' ? 'reports' : 'q_reports';
   const reportQuery = reportMode === 'monthly'

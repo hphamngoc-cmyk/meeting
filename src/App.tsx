@@ -151,7 +151,7 @@ export default function App() {
     const qOkrs = query(
       collection(db, 'okrs'),
       where('year', '==', year),
-      where('quarter', '==', quarter)
+      where('quarter', '==', reportMode === 'quarterly' ? 0 : quarter)
     );
     return onSnapshot(qOkrs, (snapshot) => {
       const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as OKR));
@@ -163,7 +163,7 @@ export default function App() {
       });
       setAllOkrs(docs);
     });
-  }, [quarter, year]);
+  }, [quarter, year, reportMode]);
 
   useEffect(() => {
     const qReports = reportMode === 'monthly'

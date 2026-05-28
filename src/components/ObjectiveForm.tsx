@@ -26,7 +26,7 @@ export default function ObjectiveForm({ deptId, quarter, year, mode, onClose }: 
     try {
       await addDoc(collection(db, 'objectives'), {
         deptId,
-        quarter,
+        quarter: mode === 'quarterly' ? 0 : quarter,
         year,
         mode, // Store the mode so we know if it's a Yearly or Quarterly objective
         perspective,

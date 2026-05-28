@@ -3,7 +3,7 @@ import { addDoc, collection, query, where, getDocs, doc, setDoc } from 'firebase
 import { X, Send, ListPlus } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { BSCPerspective, PERSPECTIVE_LABELS, Objective } from '../types';
-import { formatValue, parseValue } from '../lib/format';
+import { formatValue, parseValue, safeParseValue } from '../lib/format';
 import { SafeInput } from './SafeInput';
 
 interface KRFormProps {
@@ -32,7 +32,7 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
         collection(db, 'objectives'),
         where('deptId', '==', deptId),
         where('year', '==', year),
-        where('quarter', '==', quarter),
+        where('quarter', '==', mode === 'quarterly' ? 0 : quarter),
         where('perspective', '==', perspective)
       );
       const snap = await getDocs(q);
@@ -42,7 +42,7 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
       else setSelectedObjectiveId('');
     };
     fetchObjectives();
-  }, [deptId, quarter, year, perspective]);
+  }, [deptId, quarter, year, perspective, mode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,15 +60,15 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
 
       const krDocRef = await addDoc(collection(db, 'okrs'), {
         deptId,
-        quarter,
+        quarter: mode === 'quarterly' ? 0 : quarter,
         year,
         mode,
         perspective,
         objectiveId: selectedObjectiveId,
         kr,
-        targetYear: parseValue(targetYear),
-        targetQuarter: parseValue(targetQuarter),
-        targetMonth: parseValue(targetMonth),
+        targetYear: safeParseValue(targetYear),
+        targetQuarter: safeParseValue(targetQuarter),
+        targetMonth: safeParseValue(targetMonth),
         unit,
         order: existingCount,
         createdAt: Date.now()
@@ -79,7 +79,7 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
       // Sync targetQuarter to ALL 3 months of this quarter in the reports collection, and set targetMonth for current month
       const startM = (quarter - 1) * 3 + 1;
       const mPromises = [];
-      const pq = parseValue(targetQuarter);
+      const pq = safeParseValue(targetQuarter);
       for (let m = startM; m <= quarter * 3; m++) {
         const mReportId = `${deptId}_${krId}_m${m}_${year}`;
         const isCurrentMonth = m === month;
@@ -89,7 +89,7 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
             krId,
             month: m,
             year,
-            ...(isCurrentMonth && mode === 'monthly' ? { targetMonth: parseValue(targetMonth) } : {}),
+            ...(isCurrentMonth && mode === 'monthly' ? { targetMonth: safeParseValue(targetMonth) } : {}),
             targetQuarter: pq,
             actual: '',
             status: '',
@@ -125,6 +125,8 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
     const clean = parseValue(val);
     if (clean === '' || !isNaN(Number(clean))) {
       setter(formatValue(clean));
+    } else {
+      setter(val);
     }
   };
 
@@ -132,6 +134,8 @@ export default function KRForm({ deptId, month, quarter, year, mode, onClose }: 
     const clean = parseValue(val);
     if (clean === '' || !isNaN(Number(clean))) {
       setter(formatValue(clean));
+    } else {
+      setter(val);
     }
   };
 

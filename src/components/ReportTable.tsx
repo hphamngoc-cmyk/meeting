@@ -31,7 +31,7 @@ import { cn } from '../lib/utils';
 import KRForm from './KRForm';
 import { SafeInput, SafeTextarea } from './SafeInput';
 import ObjectiveForm from './ObjectiveForm';
-import { formatValue, parseValue } from '../lib/format';
+import { formatValue, parseValue, safeParseValue } from '../lib/format';
 
 interface ReportTableProps {
   deptId: string;
@@ -81,7 +81,7 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
       collection(db, 'objectives'),
       where('deptId', '==', deptId),
       where('year', '==', year),
-      where('quarter', '==', quarter)
+      where('quarter', '==', mode === 'quarterly' ? 0 : quarter)
     );
     return onSnapshot(qObj, (snapshot) => {
       const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Objective));
@@ -93,14 +93,14 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
       });
       setObjectives(docs);
     });
-  }, [deptId, quarter, year]);
+  }, [deptId, quarter, year, mode]);
 
   useEffect(() => {
     const qOkr = query(
       collection(db, 'okrs'), 
       where('deptId', '==', deptId),
       where('year', '==', year),
-      where('quarter', '==', quarter)
+      where('quarter', '==', mode === 'quarterly' ? 0 : quarter)
     );
     return onSnapshot(qOkr, (snapshot) => {
       const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as OKR));
@@ -117,7 +117,7 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
       });
       setOkrs(docs);
     });
-  }, [deptId, quarter, year]);
+  }, [deptId, quarter, year, mode]);
 
   useEffect(() => {
     const q = query(
@@ -223,8 +223,8 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
     const coll = mode === 'monthly' ? 'reports' : 'q_reports';
     const existing = mode === 'monthly' ? reports[krId] : qReports[krId];
     
-    // Auto-parse numeric value if field is 'actual' or similar
-    const cleanValue = (field === 'actual' || field === 'actualAccumulated') ? parseValue(value) : value;
+    // Auto-parse numeric value if field is 'actual' or similar, using safeParseValue to preserve text
+    const cleanValue = (field === 'actual' || field === 'actualAccumulated') ? safeParseValue(value) : value;
 
     const reportData = {
       ...existing,
@@ -436,17 +436,17 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
     try {
       await setDoc(doc(db, 'okrs', editingKR.id), {
         kr: editKRContent.trim(),
-        targetYear: parseValue(editKRTargetYear),
-        targetQuarter: parseValue(editKRTargetQuarter),
-        targetMonth: parseValue(editKRTargetMonth),
+        targetYear: safeParseValue(editKRTargetYear),
+        targetQuarter: safeParseValue(editKRTargetQuarter),
+        targetMonth: safeParseValue(editKRTargetMonth),
         unit: editKRUnit.trim()
       }, { merge: true });
 
       if (mode === 'monthly') {
-        await handleUpdateReport(editingKR.id, 'targetMonth', editKRTargetMonth);
-        await handleUpdateReport(editingKR.id, 'targetQuarter', editKRTargetQuarter);
+        await handleUpdateReport(editingKR.id, 'targetMonth', safeParseValue(editKRTargetMonth));
+        await handleUpdateReport(editingKR.id, 'targetQuarter', safeParseValue(editKRTargetQuarter));
       } else {
-        await handleUpdateReport(editingKR.id, 'targetQuarter', editKRTargetQuarter);
+        await handleUpdateReport(editingKR.id, 'targetQuarter', safeParseValue(editKRTargetQuarter));
       }
     } catch (err) {
       console.error(err);
@@ -508,6 +508,8 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
     const clean = parseValue(val);
     if (clean === '' || !isNaN(Number(clean))) {
       handleUpdateReport(krId, field, clean);
+    } else {
+      handleUpdateReport(krId, field, val.trim());
     }
   };
 
@@ -689,15 +691,13 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                         type="text"
                                         value={inputValue}
                                         onValueChange={(val) => {
-                                          const clean = parseValue(val);
-                                          if (clean === '' || !isNaN(Number(clean))) {
-                                            if (isShiftedQuarter) {
-                                              setDoc(doc(db, 'okrs', okr.id), { targetNextQuarter: clean }, { merge: true });
-                                            } else if (mode === 'monthly') {
-                                              handleUpdateReport(okr.id, 'targetQuarter', clean);
-                                            } else {
-                                              setDoc(doc(db, 'okrs', okr.id), { targetYear: clean }, { merge: true });
-                                            }
+                                          const clean = safeParseValue(val);
+                                          if (isShiftedQuarter) {
+                                            setDoc(doc(db, 'okrs', okr.id), { targetNextQuarter: clean }, { merge: true });
+                                          } else if (mode === 'monthly') {
+                                            handleUpdateReport(okr.id, 'targetQuarter', clean);
+                                          } else {
+                                            setDoc(doc(db, 'okrs', okr.id), { targetYear: clean }, { merge: true });
                                           }
                                         }}
                                         placeholder="..."
@@ -743,13 +743,11 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                           type="text"
                                           value={inputValue}
                                           onValueChange={(val) => {
-                                            const clean = parseValue(val);
-                                            if (clean === '' || !isNaN(Number(clean))) {
-                                              if (mode === 'monthly') {
-                                                handleUpdateReport(okr.id, 'targetMonth', clean);
-                                              } else {
-                                                handleUpdateReport(okr.id, 'targetQuarter', clean);
-                                              }
+                                            const clean = safeParseValue(val);
+                                            if (mode === 'monthly') {
+                                              handleUpdateReport(okr.id, 'targetMonth', clean);
+                                            } else {
+                                              handleUpdateReport(okr.id, 'targetQuarter', clean);
                                             }
                                           }}
                                           placeholder="..."
@@ -774,13 +772,11 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                                           type="text"
                                           value={inputValue}
                                           onValueChange={(val) => {
-                                            const clean = parseValue(val);
-                                            if (clean === '' || !isNaN(Number(clean))) {
-                                              if (form === 'performance') handleUpdateReport(okr.id, 'actual', clean);
-                                              else {
-                                                const field = mode === 'monthly' ? 'targetNextMonth' : 'targetNextQuarter';
-                                                setDoc(doc(db, 'okrs', okr.id), { [field]: clean }, { merge: true });
-                                              }
+                                            const clean = safeParseValue(val);
+                                            if (form === 'performance') handleUpdateReport(okr.id, 'actual', clean);
+                                            else {
+                                              const field = mode === 'monthly' ? 'targetNextMonth' : 'targetNextQuarter';
+                                              setDoc(doc(db, 'okrs', okr.id), { [field]: clean }, { merge: true });
                                             }
                                           }}
                                           placeholder="..."
@@ -1091,7 +1087,7 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                       value={editKRTargetYear}
                       onValueChange={(val) => {
                         const clean = parseValue(val);
-                        if (clean === '' || !isNaN(Number(clean))) setEditKRTargetYear(formatValue(clean));
+                        if (clean === '' || !isNaN(Number(clean))) setEditKRTargetYear(formatValue(clean)); else setEditKRTargetYear(val);
                       }}
                       placeholder="Số lượng/Tỷ lệ"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-indigo-600 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100/50 outline-none transition-all font-mono font-black"
@@ -1106,7 +1102,7 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                     value={editKRTargetQuarter}
                     onValueChange={(val) => {
                       const clean = parseValue(val);
-                      if (clean === '' || !isNaN(Number(clean))) setEditKRTargetQuarter(formatValue(clean));
+                      if (clean === '' || !isNaN(Number(clean))) setEditKRTargetQuarter(formatValue(clean)); else setEditKRTargetQuarter(val);
                     }}
                     placeholder="Số lượng/Tỷ lệ"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-indigo-600 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100/50 outline-none transition-all font-mono font-black"
@@ -1123,7 +1119,7 @@ export default function ReportTable({ deptId, month, year, mode, form }: ReportT
                       value={editKRTargetMonth}
                       onValueChange={(val) => {
                         const clean = parseValue(val);
-                        if (clean === '' || !isNaN(Number(clean))) setEditKRTargetMonth(formatValue(clean));
+                        if (clean === '' || !isNaN(Number(clean))) setEditKRTargetMonth(formatValue(clean)); else setEditKRTargetMonth(val);
                       }}
                       placeholder="Số lượng/Tỷ lệ"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-indigo-600 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100/50 outline-none transition-all font-mono font-black"

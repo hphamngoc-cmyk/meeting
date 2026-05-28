@@ -47,6 +47,18 @@ export function parseValue(str: string): string {
 }
 
 /**
+ * Safely parses any localized numeric string, falling back to raw trimmed text if it's not a valid number.
+ */
+export function safeParseValue(str: string): string {
+  if (!str) return '';
+  const clean = parseValue(str);
+  if (clean === '' || !isNaN(Number(clean))) {
+    return clean;
+  }
+  return str.trim();
+}
+
+/**
  * Formats a string or number into a thousands-separated string with standard rounding to 1 decimal place (Vietnamese style: 6,8)
  */
 export function formatValue(val: string | number | undefined | null): string {
