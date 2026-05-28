@@ -99,13 +99,21 @@ export async function exportToPPTX(departments: Department[], month: number, yea
 
   departments.forEach((dept, index) => {
     const deptOkrs = allOkrs.filter(okr => okr.deptId === dept.id);
-    const totalCount = deptOkrs.length;
+    const activeOkrs = deptOkrs.filter(okr => {
+      const rep = allReports.find(r => r.krId === okr.id);
+      const target = reportMode === 'monthly'
+        ? (rep?.targetMonth ?? '')
+        : (rep?.targetQuarter ?? okr.targetQuarter ?? '');
+      return target !== undefined && target !== null && target.toString().trim() !== '';
+    });
+    const totalCount = activeOkrs.length;
     
     let achievedCount = 0;
     let achievedPct = 0;
     
     if (totalCount > 0) {
-      achievedCount = allReports.filter(rep => rep.deptId === dept.id && rep.status === 'achieved').length;
+      const activeOkrIds = activeOkrs.map(o => o.id);
+      achievedCount = allReports.filter(rep => rep.deptId === dept.id && activeOkrIds.includes(rep.krId) && rep.status === 'achieved').length;
       achievedPct = Math.min(100, Math.round((achievedCount / totalCount) * 100));
     }
 
@@ -222,7 +230,7 @@ export async function exportToPPTX(departments: Department[], month: number, yea
                 resultDataRows.push([
                   { text: `KR${kIdx + 1}. ${okr.kr}`, options: { fontSize: 8, border: { type: "solid", color: "CBD5E1" } } },
                   { text: formatValue(targetPeriodVal), options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
-                  { text: formatValue(report?.targetMonth ?? okr.targetMonth), options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
+                  { text: formatValue(report?.targetMonth ?? ''), options: { fontSize: 9, align: "center", border: { type: "solid", color: "CBD5E1" } } },
                   { text: formatValue(report?.actual) || "-", options: { fontSize: 9, align: "center", color: statusColor, bold: true, border: { type: "solid", color: "CBD5E1" } } },
                   { text: statusText, options: { fontSize: 9, align: "center", color: statusColor, bold: true, border: { type: "solid", color: "CBD5E1" } } },
                   { text: report?.notes || "", options: { fontSize: 8, border: { type: "solid", color: "CBD5E1" } } }

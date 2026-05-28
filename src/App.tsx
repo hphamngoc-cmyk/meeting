@@ -177,11 +177,21 @@ export default function App() {
 
   const getDeptStats = (deptId: string) => {
     const deptOkrs = allOkrs.filter(okr => okr.deptId === deptId);
-    const totalCount = deptOkrs.length;
+    const activeOkrs = deptOkrs.filter(okr => {
+      const rep = allReports.find(r => r.krId === okr.id);
+      const target = reportMode === 'monthly'
+        ? (rep?.targetMonth ?? '')
+        : (rep?.targetQuarter ?? okr.targetQuarter ?? '');
+      return target !== undefined && target !== null && target.toString().trim() !== '';
+    });
+
+    const totalCount = activeOkrs.length;
     if (totalCount === 0) {
       return { totalCount: 0, achievedCount: 0, achievedPct: 0, pendingPct: 0 };
     }
-    const deptReports = allReports.filter(rep => rep.deptId === deptId);
+
+    const activeOkrIds = activeOkrs.map(o => o.id);
+    const deptReports = allReports.filter(rep => rep.deptId === deptId && activeOkrIds.includes(rep.krId));
     const achievedCount = deptReports.filter(rep => rep.status === 'achieved').length;
     const achievedPct = Math.min(100, Math.round((achievedCount / totalCount) * 100));
     const pendingPct = 100 - achievedPct;
